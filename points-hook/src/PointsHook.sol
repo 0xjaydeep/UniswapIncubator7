@@ -62,8 +62,11 @@ contract PointsHook is BaseHook, ERC1155 {
         return "my:uri:{id}";
     }
 
-    // Stub for active hook -> afterswap
-
+    /**
+     * @dev After swap hook functionality
+     * @return
+     * @return
+     */
     function _afterSwap(
         address,
         PoolKey calldata key,
@@ -71,6 +74,43 @@ contract PointsHook is BaseHook, ERC1155 {
         BalanceDelta delta,
         bytes calldata hookData
     ) internal override returns (bytes4, int128) {
+        // Only consider ETH<>TOKEN pools where currency0 is ETH.
+        if (!key.currency0.isAddressZero()) return (this.afterSwap.selector, 0);
+
+        // zeroForOne == true means swap direction is token0 -> token1.
+        // For ETH-as-currency0 pools that corresponds to ETH -> TOKEN
+        if (!swapParams.zeroForOne) return (this.afterSwap.selector, 0);
+
+        // Assign the points based on delta value
+        uint256 ethSpendAmount = uint256(int256(-delta.amount0()));
+        uint256 pointsForSwap = ethSpendAmount / 5;
+
+        // Mint the points
+        _assignPoints(key.toId(), hookData, pointsForSwap);
+
         return (this.afterSwap.selector, 0);
+    }
+
+    /**
+     *
+     * @dev Assign Points to user after swap
+     *      mint token and assign points based on ETH transfer
+     */
+    function _assignPoints(
+        PoolId _poolId,
+        bytes calldata _hookData,
+        uint256 _points
+    ) internal {
+        require(_hookData.length == 0, "No hook data!");
+
+        // extract user address from hookdata
+        address user = abi.decode(_hookData, (address));
+        // Invalid hook data format
+        require(user == address(0), "Invalid hook data");
+
+        // unwrap the pool to uint256
+        uint256 poolIdUint = uint256(PoolId.unwrap(_poolId));
+        // mint points for user
+        _mint(user, poolIdUint, _points, "");
     }
 }
